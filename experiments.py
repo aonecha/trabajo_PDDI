@@ -1,8 +1,6 @@
 # experiments.py
 import warnings
 from sklearn.exceptions import ConvergenceWarning
-
-# (Opcional pero recomendado) para que no ensucie la salida:
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 import time
@@ -13,12 +11,15 @@ from data_generation import (
     precision_from_adjacency_laplacian,
     sample_gaussian_from_precision,
 )
+
 from methods import (
-    estimate_theta_ridge_inv_cov,
-    estimate_theta_glasso_sklearn,
-    estimate_theta_glasso_cvxpy,
-    estimate_theta_pgd,
+    sample_cov_centered,
+    estimate_theta_ridge_from_cov,
+    estimate_theta_glasso_sklearn_solver_time,
+    estimate_theta_glasso_cvxpy_from_cov,
+    estimate_theta_pgd_from_cov,
 )
+
 from metrics import fro_error_rel, sparsity_offdiag
 
 
@@ -29,13 +30,14 @@ def run_single(
     M: int = 50,
     avg_degree: int = 4,
     graph_type: str = "erdos_renyi",
-    beta_ws: float = 0.1,  # solo se usa si graph_type == "watts_strogatz"
+    beta_ws: float = 0.1,
     alpha_lap: float = 1.0,
     eps: float = 0.1,
     lam: float = 0.05,
     gamma_ridge: float = 1e-2,
+    cvxpy_solver: str = "SCS",
 ):
-    # 1) Generate ground-truth graph and precision
+    # 1) Ground truth
     A_true = generate_graph(
         N=N,
         avg_degree=avg_degree,
@@ -45,24 +47,34 @@ def run_single(
     )
     Theta_true = precision_from_adjacency_laplacian(A_true, alpha_lap=alpha_lap, eps=eps)
 
-    # 2) Sample signals
+    # 2) Data
     X = sample_gaussian_from_precision(Theta_true, M=M, seed=seed + 123)
 
-    # 3) Estimate precision
-    t0 = time.time()
+    # 3) Precompute covariance OUTSIDE timing (not solver)
+    S = sample_cov_centered(X)
+
+    # 4) Solver-only timing
+    t0 = time.perf_counter()
+
     if method == "ridge":
-        Theta_hat = estimate_theta_ridge_inv_cov(X, gamma=gamma_ridge)
+        Theta_hat = estimate_theta_ridge_from_cov(S, gamma=gamma_ridge)
+
     elif method == "glasso_skl":
-        Theta_hat = estimate_theta_glasso_sklearn(X, lam=lam)
+        # sklearn solver is model.fit → cannot separate cleanly
+        Theta_hat = estimate_theta_glasso_sklearn_solver_time(X, lam=lam)
+
     elif method == "glasso_cvx":
-        Theta_hat = estimate_theta_glasso_cvxpy(X, lam=lam)
+        # CVXPY solver-only because problem is cached inside methods.py
+        Theta_hat = estimate_theta_glasso_cvxpy_from_cov(S, lam=lam, solver=cvxpy_solver)
+
     elif method == "pgd":
-        Theta_hat = estimate_theta_pgd(X, lam=lam)
+        Theta_hat = estimate_theta_pgd_from_cov(S, lam=lam)
+
     else:
         raise ValueError(f"Unknown method: {method}")
-    dt = time.time() - t0
 
-    # 4) Metrics on precision
+    dt = time.perf_counter() - t0
+
     return {
         "method": method,
         "graph_type": graph_type,
@@ -177,7 +189,7 @@ def print_single(title: str, results):
             f"{r['method']:10s} | "
             f"Fro(Θ)={r['fro_theta']:.3f} | "
             f"sparsity={r['sparsity_theta']:.3f} | "
-            f"time={r['time_ms']:.2f} ms"
+            f"solver_time={r['time_ms']:.2f} ms"
         )
 
 
@@ -192,7 +204,7 @@ def print_sweep_M(title: str, rows):
             f"{r['method']:10s} | "
             f"Fro(Θ)={r['fro_mean']:.3f} ± {r['fro_std']:.3f} | "
             f"sparsity={r['sp_mean']:.3f} ± {r['sp_std']:.3f} | "
-            f"time={r['t_mean']:.2f} ± {r['t_std']:.2f} ms"
+            f"solver_time={r['t_mean']:.2f} ± {r['t_std']:.2f} ms"
         )
 
 
@@ -207,41 +219,30 @@ def print_sweep_lam(title: str, rows):
             f"{r['method']:10s} | "
             f"Fro(Θ)={r['fro_mean']:.3f} ± {r['fro_std']:.3f} | "
             f"sparsity={r['sp_mean']:.3f} ± {r['sp_std']:.3f} | "
-            f"time={r['t_mean']:.2f} ± {r['t_std']:.2f} ms"
+            f"solver_time={r['t_mean']:.2f} ± {r['t_std']:.2f} ms"
         )
 
 
 if __name__ == "__main__":
-    # ---------------------------
-    # Global experiment settings
-    # ---------------------------
     N = 20
     avg_degree = 4
-
-    # Graph types (as you requested)
     graph_types = ["erdos_renyi", "watts_strogatz", "barabasi_albert"]
-
-    # Small-world parameter (only affects watts_strogatz)
     beta_ws = 0.1
 
-    # Generator (truth) params
     alpha_lap = 1.0
     eps = 0.1
 
-    # Inference params
     lam = 0.05
     gamma_ridge = 1e-2
 
     methods_all = ["ridge", "glasso_skl", "glasso_cvx", "pgd"]
-    methods_lam = ["glasso_skl", "glasso_cvx", "pgd"]  # ridge doesn't use lam
+    methods_lam = ["glasso_skl", "glasso_cvx", "pgd"]
 
-    # ---------------------------
     # 1) Single runs per graph type
-    # ---------------------------
     for gtype in graph_types:
         single = [
             run_single(
-                m,
+                method=m,
                 seed=0,
                 N=N,
                 M=50,
@@ -260,12 +261,9 @@ if __name__ == "__main__":
             single,
         )
 
-    # ---------------------------
-    # 2) Sweep over M per graph type
-    # ---------------------------
+    # 2) Sweep over M
     M_list = [10, 20, 50, 100, 200]
     n_seeds = 10
-
     for gtype in graph_types:
         rows_M = sweep_over_M(
             methods=methods_all,
@@ -286,12 +284,9 @@ if __name__ == "__main__":
             rows_M,
         )
 
-    # ---------------------------
-    # 3) Sweep over lam per graph type (M fixed)
-    # ---------------------------
+    # 3) Sweep over lam (M fixed)
     lam_list = [0.01, 0.02, 0.05, 0.1, 0.2]
     M_fixed = 100
-
     for gtype in graph_types:
         rows_lam = sweep_over_lam(
             methods=methods_lam,

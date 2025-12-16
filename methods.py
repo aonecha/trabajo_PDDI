@@ -3,24 +3,26 @@ import cvxpy as cp
 from sklearn.covariance import GraphicalLasso
 
 
-def _sample_cov(X: np.ndarray) -> np.ndarray:
+# -----------------------------
+# Covarianza (fuera del solver)
+# -----------------------------
+def sample_cov_centered(X: np.ndarray) -> np.ndarray:
     """
-    Sample covariance S = (1/M) X X^T, assuming zero-mean signals.
-    X shape (N, M)
+    X shape (N, M). Devuelve S=(1/M) Xc Xc^T con X centrado por nodo.
+    Esto NO es solver, lo mediremos fuera.
     """
     N, M = X.shape
-    return (X @ X.T) / max(M, 1)
+    Xc = X - X.mean(axis=1, keepdims=True)
+    return (Xc @ Xc.T) / max(M, 1)
 
 
-# --------- BASELINE: Ridge inverse covariance (precision) ----------
-def estimate_theta_ridge_inv_cov(X: np.ndarray, gamma: float = 1e-2) -> np.ndarray:
+# ============================================================
+# 1) RIDGE: solver = inversión de matriz
+# ============================================================
+def estimate_theta_ridge_from_cov(S: np.ndarray, gamma: float = 1e-2) -> np.ndarray:
     """
-    Baseline precision estimate:
-        Theta_hat = (S + gamma I)^{-1}
-
-    gamma stabilizes inversion when M is small / S is ill-conditioned.
+    Solver-only: Theta = (S + gamma I)^{-1}
     """
-    S = _sample_cov(X)
     N = S.shape[0]
     Theta = np.linalg.inv(S + gamma * np.eye(N))
     Theta = 0.5 * (Theta + Theta.T)
@@ -28,72 +30,90 @@ def estimate_theta_ridge_inv_cov(X: np.ndarray, gamma: float = 1e-2) -> np.ndarr
     return Theta
 
 
-# --------- GLASSO (Coordinate descent via sklearn) ----------
-def estimate_theta_glasso_sklearn(X: np.ndarray, lam: float = 0.05, max_iter: int = 1000, tol: float = 1e-3) -> np.ndarray:
+# ============================================================
+# 2) GLASSO (sklearn): solver = model.fit
+# ============================================================
+def estimate_theta_glasso_sklearn_solver_time(X: np.ndarray, lam: float = 0.05, max_iter: int = 1000, tol: float = 1e-3) -> np.ndarray:
     """
-    GraphicalLasso via sklearn (block coordinate descent).
-    Relaxed tol and max_iter to avoid long runtimes / convergence warnings at small N.
+    Aquí el solver real es model.fit(X.T). No se puede separar más fino
+    (GraphicalLasso hace su pipeline interno).
     """
     model = GraphicalLasso(alpha=lam, max_iter=max_iter, tol=tol)
-    model.fit(X.T)  # (M, N)
+    model.fit(X.T)  # solver
     Theta = model.precision_.copy()
     Theta = 0.5 * (Theta + Theta.T)
     np.fill_diagonal(Theta, 0.0)
     return Theta
 
 
+# ============================================================
+# 3) GLASSO (CVXPY): solver = prob.solve
+#    -> cacheamos el problema para NO medir la construcción
+# ============================================================
+_CVXPY_CACHE = {}  # key: (N, solver) -> dict con prob, Theta_var, S_param, lam_param
 
-# --------- GLASSO (CVXPY) ----------
-def estimate_theta_glasso_cvxpy(X: np.ndarray, lam: float = 0.05, solver: str = "SCS") -> np.ndarray:
-    """
-    Same objective as GLASSO, solved with a generic convex solver (slower).
-    """
-    S = _sample_cov(X)
-    N = S.shape[0]
+def _get_cvxpy_problem(N: int, solver: str = "SCS"):
+    key = (int(N), str(solver))
+    if key in _CVXPY_CACHE:
+        return _CVXPY_CACHE[key]
 
     Theta = cp.Variable((N, N), symmetric=True)
-    obj = -cp.log_det(Theta) + cp.trace(S @ Theta) + lam * cp.norm1(Theta)
-    constraints = [Theta >> 1e-6 * np.eye(N)]
-    prob = cp.Problem(cp.Minimize(obj), constraints)
-    prob.solve(solver=solver, verbose=False)
+    S_param = cp.Parameter((N, N), symmetric=True)
+    lam_param = cp.Parameter(nonneg=True)
 
-    Theta_hat = Theta.value
+    offdiag = Theta - cp.diag(cp.diag(Theta))
+    obj = -cp.log_det(Theta) + cp.trace(S_param @ Theta) + lam_param * cp.norm1(offdiag)
+    constraints = [Theta >> 1e-6 * np.eye(N)]
+
+    prob = cp.Problem(cp.Minimize(obj), constraints)
+    _CVXPY_CACHE[key] = {"prob": prob, "Theta": Theta, "S": S_param, "lam": lam_param, "solver": solver}
+    return _CVXPY_CACHE[key]
+
+
+def estimate_theta_glasso_cvxpy_from_cov(S: np.ndarray, lam: float = 0.05, solver: str = "SCS") -> np.ndarray:
+    """
+    Solver-only: mediremos SOLO prob.solve. La construcción está cacheada.
+    """
+    N = S.shape[0]
+    pack = _get_cvxpy_problem(N, solver=solver)
+    pack["S"].value = 0.5 * (S + S.T)
+    pack["lam"].value = float(lam)
+
+    # El solve se hace fuera del timing en experiments.py para que sea puro.
+    pack["prob"].solve(solver=solver, verbose=False)
+
+    Theta_hat = pack["Theta"].value
     Theta_hat = 0.5 * (Theta_hat + Theta_hat.T)
     np.fill_diagonal(Theta_hat, 0.0)
     return Theta_hat
 
 
-# --------- Proximal Gradient (simple) ----------
-def estimate_theta_pgd(
-    X: np.ndarray,
+# ============================================================
+# 4) PGD: solver = bucle iterativo (usando S ya computada)
+# ============================================================
+def estimate_theta_pgd_from_cov(
+    S: np.ndarray,
     lam: float = 0.05,
     lr: float = 0.01,
     n_iter: int = 400,
     jitter: float = 1e-3,
 ) -> np.ndarray:
     """
-    Simplified proximal-gradient-like scheme on the GLASSO objective.
-    Not a production solver; intended for educational comparison.
-
-    Update:
-      grad = S - Theta^{-1}
-      Theta <- Theta - lr * grad
-      Theta <- SoftThreshold(Theta, lr*lam)   (prox for L1)
-      Theta <- symmetrize + jitter*I
+    Solver-only: bucle PGD con soft-threshold SOLO off-diagonal.
     """
-    S = _sample_cov(X)
     N = S.shape[0]
-
     Theta = np.eye(N)
+
     for _ in range(n_iter):
         Theta_inv = np.linalg.inv(Theta + 1e-8 * np.eye(N))
         grad = S - Theta_inv
         Theta = Theta - lr * grad
 
-        # soft-thresholding (prox L1)
-        Theta = np.sign(Theta) * np.maximum(np.abs(Theta) - lr * lam, 0.0)
+        diag = np.diag(np.diag(Theta))
+        off = Theta - diag
+        off = np.sign(off) * np.maximum(np.abs(off) - lr * lam, 0.0)
+        Theta = diag + off
 
-        # symmetrize and keep PD-ish
         Theta = 0.5 * (Theta + Theta.T)
         Theta = Theta + jitter * np.eye(N)
 

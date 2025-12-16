@@ -2,10 +2,19 @@ import numpy as np
 
 
 def fro_error_rel(X_hat: np.ndarray, X_true: np.ndarray) -> float:
-    """Relative Frobenius error: ||X_hat - X_true||_F / ||X_true||_F"""
-    num = np.linalg.norm(X_hat - X_true, ord="fro")
-    den = np.linalg.norm(X_true, ord="fro") + 1e-12
+    """
+    Relative Frobenius error SOLO off-diagonal:
+      ||(X_hat - X_true)_off||_F / ||(X_true)_off||_F
+    Esto es coherente si ponéis la diagonal a 0 en las estimaciones.
+    """
+    N = X_true.shape[0]
+    mask = ~np.eye(N, dtype=bool)
+
+    diff = X_hat[mask] - X_true[mask]
+    num = np.linalg.norm(diff)
+    den = np.linalg.norm(X_true[mask]) + 1e-12
     return float(num / den)
+
 
 
 def sparsity_offdiag(X: np.ndarray, tol: float = 1e-4) -> float:
