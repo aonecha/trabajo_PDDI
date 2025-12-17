@@ -1,11 +1,11 @@
 import numpy as np
 
 
-def fro_error_rel(X_hat: np.ndarray, X_true: np.ndarray) -> float:
+def fro_error_rel_offdiag(X_hat: np.ndarray, X_true: np.ndarray) -> float:
     """
     Relative Frobenius error SOLO off-diagonal:
       ||(X_hat - X_true)_off||_F / ||(X_true)_off||_F
-    Esto es coherente si ponéis la diagonal a 0 en las estimaciones.
+    (coherente cuando ponemos diagonal a 0 en Theta)
     """
     N = X_true.shape[0]
     mask = ~np.eye(N, dtype=bool)
@@ -16,11 +16,20 @@ def fro_error_rel(X_hat: np.ndarray, X_true: np.ndarray) -> float:
     return float(num / den)
 
 
+def fro_error_rel_full(X_hat: np.ndarray, X_true: np.ndarray) -> float:
+    """
+    Relative Frobenius error sobre la matriz COMPLETA:
+      ||X_hat - X_true||_F / ||X_true||_F
+    (esto es lo que usamos para Laplaciano, porque su diagonal importa)
+    """
+    num = np.linalg.norm(X_hat - X_true, ord="fro")
+    den = np.linalg.norm(X_true, ord="fro") + 1e-12
+    return float(num / den)
+
 
 def sparsity_offdiag(X: np.ndarray, tol: float = 1e-4) -> float:
     """
     Fraction of off-diagonal entries that are ~0.
-    tol=1e-4 works much better for CVXPY / numerical solvers than 1e-8.
     """
     N = X.shape[0]
     mask = ~np.eye(N, dtype=bool)
@@ -31,7 +40,6 @@ def sparsity_offdiag(X: np.ndarray, tol: float = 1e-4) -> float:
 def f1_support_offdiag(X_hat: np.ndarray, X_true: np.ndarray, tol: float = 1e-4) -> float:
     """
     OPTIONAL: F1 on support of off-diagonal entries (|X_ij| > tol).
-    Not printed by default; use only if you define this tol in the report.
     """
     N = X_true.shape[0]
     iu = np.triu_indices(N, k=1)
@@ -43,3 +51,19 @@ def f1_support_offdiag(X_hat: np.ndarray, X_true: np.ndarray, tol: float = 1e-4)
     fn = ((y_true == 1) & (y_pred == 0)).sum()
 
     return float((2 * tp) / (2 * tp + fp + fn + 1e-12))
+
+
+def theta_to_laplacian(Theta_hat: np.ndarray, thr: float = 1e-4) -> np.ndarray:
+    """
+    Convierte Theta_hat (precisión estimada) a un Laplaciano estimado:
+      W_ij = |Theta_ij| si |Theta_ij| > thr, si no 0
+      L_hat = diag(sum_j W_ij) - W
+    """
+    W = np.abs(Theta_hat).copy()
+    np.fill_diagonal(W, 0.0)
+    W[W < thr] = 0.0
+    W = 0.5 * (W + W.T)
+
+    d = W.sum(axis=1)
+    L_hat = np.diag(d) - W
+    return L_hat

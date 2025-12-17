@@ -3,26 +3,17 @@ import cvxpy as cp
 from sklearn.covariance import GraphicalLasso
 
 
-# -----------------------------
-# Covarianza (fuera del solver)
-# -----------------------------
 def sample_cov_centered(X: np.ndarray) -> np.ndarray:
     """
-    X shape (N, M). Devuelve S=(1/M) Xc Xc^T con X centrado por nodo.
-    Esto NO es solver, lo mediremos fuera.
+    X shape (N, M). S=(1/M) Xc Xc^T con X centrado por nodo.
     """
     N, M = X.shape
     Xc = X - X.mean(axis=1, keepdims=True)
     return (Xc @ Xc.T) / max(M, 1)
 
 
-# ============================================================
-# 1) RIDGE: solver = inversión de matriz
-# ============================================================
+# --------- 1) RIDGE (solver = inv) ----------
 def estimate_theta_ridge_from_cov(S: np.ndarray, gamma: float = 1e-2) -> np.ndarray:
-    """
-    Solver-only: Theta = (S + gamma I)^{-1}
-    """
     N = S.shape[0]
     Theta = np.linalg.inv(S + gamma * np.eye(N))
     Theta = 0.5 * (Theta + Theta.T)
@@ -30,14 +21,10 @@ def estimate_theta_ridge_from_cov(S: np.ndarray, gamma: float = 1e-2) -> np.ndar
     return Theta
 
 
-# ============================================================
-# 2) GLASSO (sklearn): solver = model.fit
-# ============================================================
-def estimate_theta_glasso_sklearn_solver_time(X: np.ndarray, lam: float = 0.05, max_iter: int = 1000, tol: float = 1e-3) -> np.ndarray:
-    """
-    Aquí el solver real es model.fit(X.T). No se puede separar más fino
-    (GraphicalLasso hace su pipeline interno).
-    """
+# --------- 2) GLASSO sklearn (solver = fit) ----------
+def estimate_theta_glasso_sklearn_solver_time(
+    X: np.ndarray, lam: float = 0.05, max_iter: int = 1000, tol: float = 1e-3
+) -> np.ndarray:
     model = GraphicalLasso(alpha=lam, max_iter=max_iter, tol=tol)
     model.fit(X.T)  # solver
     Theta = model.precision_.copy()
@@ -46,11 +33,8 @@ def estimate_theta_glasso_sklearn_solver_time(X: np.ndarray, lam: float = 0.05, 
     return Theta
 
 
-# ============================================================
-# 3) GLASSO (CVXPY): solver = prob.solve
-#    -> cacheamos el problema para NO medir la construcción
-# ============================================================
-_CVXPY_CACHE = {}  # key: (N, solver) -> dict con prob, Theta_var, S_param, lam_param
+# --------- 3) GLASSO CVXPY (solver = prob.solve; problema cacheado) ----------
+_CVXPY_CACHE = {}
 
 def _get_cvxpy_problem(N: int, solver: str = "SCS"):
     key = (int(N), str(solver))
@@ -64,23 +48,22 @@ def _get_cvxpy_problem(N: int, solver: str = "SCS"):
     offdiag = Theta - cp.diag(cp.diag(Theta))
     obj = -cp.log_det(Theta) + cp.trace(S_param @ Theta) + lam_param * cp.norm1(offdiag)
     constraints = [Theta >> 1e-6 * np.eye(N)]
-
     prob = cp.Problem(cp.Minimize(obj), constraints)
+
     _CVXPY_CACHE[key] = {"prob": prob, "Theta": Theta, "S": S_param, "lam": lam_param, "solver": solver}
     return _CVXPY_CACHE[key]
 
 
 def estimate_theta_glasso_cvxpy_from_cov(S: np.ndarray, lam: float = 0.05, solver: str = "SCS") -> np.ndarray:
-    """
-    Solver-only: mediremos SOLO prob.solve. La construcción está cacheada.
-    """
     N = S.shape[0]
     pack = _get_cvxpy_problem(N, solver=solver)
     pack["S"].value = 0.5 * (S + S.T)
     pack["lam"].value = float(lam)
 
-    # El solve se hace fuera del timing en experiments.py para que sea puro.
     pack["prob"].solve(solver=solver, verbose=False)
+
+    if pack["Theta"].value is None:
+        raise RuntimeError("CVXPY failed: Theta.value is None (solver did not converge / infeasible).")
 
     Theta_hat = pack["Theta"].value
     Theta_hat = 0.5 * (Theta_hat + Theta_hat.T)
@@ -88,9 +71,7 @@ def estimate_theta_glasso_cvxpy_from_cov(S: np.ndarray, lam: float = 0.05, solve
     return Theta_hat
 
 
-# ============================================================
-# 4) PGD: solver = bucle iterativo (usando S ya computada)
-# ============================================================
+# --------- 4) PGD (solver = bucle; con S precomputada) ----------
 def estimate_theta_pgd_from_cov(
     S: np.ndarray,
     lam: float = 0.05,
@@ -98,9 +79,6 @@ def estimate_theta_pgd_from_cov(
     n_iter: int = 400,
     jitter: float = 1e-3,
 ) -> np.ndarray:
-    """
-    Solver-only: bucle PGD con soft-threshold SOLO off-diagonal.
-    """
     N = S.shape[0]
     Theta = np.eye(N)
 
