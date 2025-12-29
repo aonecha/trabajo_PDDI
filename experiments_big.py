@@ -5,6 +5,8 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 import time
 import numpy as np
+import csv
+import os
 
 from data_generation import (
     generate_graph,
@@ -30,6 +32,17 @@ from metrics import (
 )
 
 
+def save_results_csv(rows: list[dict], filename: str):
+    if not rows:
+        return
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(r)
+
+
 def run_case(
     method: str,
     seed: int,
@@ -52,10 +65,11 @@ def run_case(
     thr_theta_to_L: float = 1e-4,
 ):
     # 1) Graph: ER only
+    graph_type = "erdos_renyi"
     A_true = generate_graph(
         N=N,
         avg_degree=avg_degree,
-        graph_type="erdos_renyi",
+        graph_type=graph_type,
         seed=seed,
         beta_ws=beta_ws,   # not used for ER, but harmless
     )
@@ -65,12 +79,10 @@ def run_case(
         Theta_true = precision_from_adjacency_laplacian(A_true, alpha_lap=alpha_lap, eps=eps)
         X = sample_gaussian_from_precision(Theta_true, M=M, seed=seed + 123)
         L_true = None
-
     elif signal_type == "stationary":
         X = sample_stationary_signals(A_true, M=M, seed=seed + 123, h0=h0, h1=h1, h2=h2)
         L_true = laplacian_from_adjacency(A_true)
         Theta_true = None
-
     else:
         raise ValueError(f"Unknown signal_type: {signal_type}")
 
@@ -96,19 +108,24 @@ def run_case(
     # 5) Metric depends on signal type
     if signal_type == "gaussian":
         err = fro_error_rel_offdiag(Theta_hat, Theta_true)
-        err_label = "Fro(Θ)"
+        err_label = "Fro(Theta_offdiag)"
     else:
         L_hat = theta_to_laplacian(Theta_hat, thr=thr_theta_to_L)
         err = fro_error_rel_full(L_hat, L_true)
-        err_label = "Fro(L)"
+        err_label = "Fro(L_full)"
 
     return {
-        "method": method,
+        "graph_type": graph_type,
         "signal_type": signal_type,
+        "method": method,
+        "N": int(N),
+        "M": int(M),
+        "avg_degree": int(avg_degree),
+        "lam": float(lam),
         "err_label": err_label,
         "err": float(err),
-        "sparsity_theta": sparsity_offdiag(Theta_hat),
-        "solver_time_ms": dt * 1000.0,
+        "sparsity_theta": float(sparsity_offdiag(Theta_hat)),
+        "solver_time_ms": float(dt * 1000.0),
     }
 
 
@@ -129,19 +146,16 @@ if __name__ == "__main__":
     # ----------------------------
     N = 100
     M = 500
-    avg_degree = 6          # recomendado para ER grande (sparse pero no ultra-disperso)
+    avg_degree = 6
     seed = 0
 
-    # inference params
     lam = 0.05
     cvxpy_solver = "SCS"
 
-    # models
     signal_types = ["gaussian", "stationary"]
+    methods = ["glasso_skl", "pgd", "glasso_cvx"]  # añade "ridge" si quieres baseline
 
-    # methods:
-    # (si quieres incluir ridge para “ver que es malo”, añade "ridge" aquí)
-    methods = ["glasso_skl", "pgd", "glasso_cvx"]
+    all_rows = []
 
     for stype in signal_types:
         results = [
@@ -157,7 +171,13 @@ if __name__ == "__main__":
             )
             for meth in methods
         ]
+
         print_results(
             f"\n=== BIG RUN | ER | N={N} | M={M} | avg_degree={avg_degree} | signal={stype} | lam={lam} ===",
             results,
         )
+
+        all_rows.extend(results)
+
+    save_results_csv(all_rows, "results_csv/big_ER_N100_M500.csv")
+    print("\nSaved CSV -> results_csv/big_ER_N100_M500.csv")
