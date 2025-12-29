@@ -1,10 +1,13 @@
 # experiments.py
+import os
 import warnings
 from sklearn.exceptions import ConvergenceWarning
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 import time
 import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
 
 import csv
 import os
@@ -44,6 +47,60 @@ from metrics import (
 )
 
 
+# -----------------------------
+# Plot: guardar grafo 1 vez
+# -----------------------------
+def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, layout_seed: int = 0):
+    os.makedirs(os.path.dirname(outpath), exist_ok=True)
+    G = nx.from_numpy_array(A)  # undirected
+    plt.figure()
+    pos = nx.spring_layout(G, seed=layout_seed)
+    nx.draw(G, pos=pos, node_size=80, with_labels=False)
+    plt.title(title)
+    plt.savefig(outpath, dpi=200, bbox_inches="tight")
+    plt.close()
+
+
+def plot_three_graphs_once(N: int, avg_degree: int, beta_ws: float, seed_graph: int = 0):
+    """
+    Genera ER / WS / BA UNA sola vez y guarda 3 figuras.
+    Devuelve dict con A_true para reutilizar en single run.
+    """
+    graph_types = ["erdos_renyi", "watts_strogatz", "barabasi_albert"]
+    pretty = {
+        "erdos_renyi": "ER",
+        "watts_strogatz": "SW",
+        "barabasi_albert": "BA",
+    }
+
+    cache = {}
+    for gtype in graph_types:
+        A = generate_graph(
+            N=N,
+            avg_degree=avg_degree,
+            graph_type=gtype,
+            seed=seed_graph,
+            beta_ws=beta_ws,
+        )
+        cache[gtype] = A
+
+        if gtype == "erdos_renyi":
+            title = f"ER (N={N}, avg_degree≈{avg_degree}, seed={seed_graph})"
+        elif gtype == "watts_strogatz":
+            title = f"SW (N={N}, k≈{avg_degree}, beta={beta_ws}, seed={seed_graph})"
+        else:
+            title = f"BA (N={N}, avg_degree≈{avg_degree}, seed={seed_graph})"
+
+        outpath = f"figures/graph_{pretty[gtype]}_N{N}_seed{seed_graph}.png"
+        save_graph_figure_from_adjacency(A, outpath, title=title, layout_seed=seed_graph)
+        print("Saved graph figure:", outpath)
+
+    return cache
+
+
+# -----------------------------
+# Core experiment
+# -----------------------------
 def run_single(
     method: str,
     seed: int = 0,
@@ -61,31 +118,36 @@ def run_single(
     lam: float = 0.05,
     gamma_ridge: float = 1e-2,
     cvxpy_solver: str = "SCS",
+    # NEW: override graph adjacency for single run reuse
+    A_true_override: np.ndarray | None = None,
 ):
     # 1) Graph
-    A_true = generate_graph(
-        N=N,
-        avg_degree=avg_degree,
-        graph_type=graph_type,
-        seed=seed,
-        beta_ws=beta_ws,
-    )
+    if A_true_override is not None:
+        A_true = A_true_override
+    else:
+        A_true = generate_graph(
+            N=N,
+            avg_degree=avg_degree,
+            graph_type=graph_type,
+            seed=seed,
+            beta_ws=beta_ws,
+        )
 
-    # 2) Generate X and "truth" for metric
+    # 2) Generate X and truth for metric
     if signal_type == "gaussian":
         Theta_true = precision_from_adjacency_laplacian(A_true, alpha_lap=alpha_lap, eps=eps)
         X = sample_gaussian_from_precision(Theta_true, M=M, seed=seed + 123)
-        L_true = None  # not used
+        L_true = None
 
     elif signal_type == "stationary":
         X = sample_stationary_signals(A_true, M=M, seed=seed + 123, h0=h0, h1=h1, h2=h2)
         L_true = laplacian_from_adjacency(A_true)
-        Theta_true = None  # not used
+        Theta_true = None
 
     else:
         raise ValueError(f"Unknown signal_type: {signal_type}")
 
-    # 3) Precompute covariance OUTSIDE solver timing
+    # 3) Covariance outside solver timing
     S = sample_cov_centered(X)
 
     # 4) Solver-only timing + estimate Theta_hat
@@ -104,30 +166,35 @@ def run_single(
 
     dt = time.perf_counter() - t0
 
-    # 5) Metrics depend on signal_type
+    # 5) Metric depends on signal type
     if signal_type == "gaussian":
-        err = fro_error_rel_offdiag(Theta_hat, Theta_true)  # precision error (offdiag)
-        err_key = "fro_theta"
+        err = fro_error_rel_offdiag(Theta_hat, Theta_true)
+        err_label = "Fro(Θ)"
     else:
         L_hat = theta_to_laplacian(Theta_hat, thr=1e-4)
-        err = fro_error_rel_full(L_hat, L_true)            # Laplacian error (full)
-        err_key = "fro_L"
+        err = fro_error_rel_full(L_hat, L_true)
+        err_label = "Fro(L)"
 
-    out = {
+    return {
         "method": method,
         "graph_type": graph_type,
         "signal_type": signal_type,
+        "err_label": err_label,
+        "err": float(err),
         "sparsity_theta": sparsity_offdiag(Theta_hat),
         "time_ms": dt * 1000.0,
     }
-    out[err_key] = err
-    return out
 
 
-def _extract_err(row: dict):
-    if "fro_theta" in row:
-        return "Fro(Θ)", row["fro_theta"]
-    return "Fro(L)", row["fro_L"]
+def print_single(title: str, results):
+    print(title)
+    for r in results:
+        print(
+            f"{r['method']:10s} | "
+            f"{r['err_label']}={r['err']:.3f} | "
+            f"sparsity={r['sparsity_theta']:.3f} | "
+            f"solver_time={r['time_ms']:.2f} ms"
+        )
 
 
 def sweep_over_M(
@@ -167,8 +234,7 @@ def sweep_over_M(
                     gamma_ridge=gamma_ridge,
                     cvxpy_solver=cvxpy_solver,
                 )
-                _, err_val = _extract_err(out)
-                err_list.append(err_val)
+                err_list.append(out["err"])
                 sp_list.append(out["sparsity_theta"])
                 t_list.append(out["time_ms"])
 
@@ -224,8 +290,7 @@ def sweep_over_lam(
                     gamma_ridge=gamma_ridge,
                     cvxpy_solver=cvxpy_solver,
                 )
-                _, err_val = _extract_err(out)
-                err_list.append(err_val)
+                err_list.append(out["err"])
                 sp_list.append(out["sparsity_theta"])
                 t_list.append(out["time_ms"])
 
@@ -242,18 +307,6 @@ def sweep_over_lam(
                 "t_std": float(np.std(t_list)),
             })
     return rows
-
-
-def print_single(title: str, results):
-    print(title)
-    for r in results:
-        lbl, err = _extract_err(r)
-        print(
-            f"{r['method']:10s} | "
-            f"{lbl}={err:.3f} | "
-            f"sparsity={r['sparsity_theta']:.3f} | "
-            f"solver_time={r['time_ms']:.2f} ms"
-        )
 
 
 def print_sweep_M(title: str, rows):
@@ -303,14 +356,11 @@ if __name__ == "__main__":
     gamma_ridge = 1e-2
     cvxpy_solver = "SCS"
 
-    # ✅ Single run: incluye ridge para demostrar que es malo
+    # 0) Plot graphs once + cache adjacency to reuse in single run
+    A_cache = plot_three_graphs_once(N=N, avg_degree=avg_degree, beta_ws=beta_ws, seed_graph=0)
+
+    # 1) Single runs (same A for all methods within each gtype)
     methods_single = ["ridge", "glasso_skl", "glasso_cvx", "pgd"]
-
-    # ✅ Sweeps: quitamos ridge
-    methods_sweep_M = ["glasso_skl", "glasso_cvx", "pgd"]
-    methods_sweep_lam = ["glasso_skl", "glasso_cvx", "pgd"]
-
-    # 1) Single runs (con ridge)
     for gtype in graph_types:
         for stype in signal_types:
             single = [
@@ -329,18 +379,21 @@ if __name__ == "__main__":
                     lam=lam,
                     gamma_ridge=gamma_ridge,
                     cvxpy_solver=cvxpy_solver,
+                    A_true_override=A_cache[gtype],  # ✅ same graph as plotted
                 )
                 for m in methods_single
             ]
-            print_single(f"\n=== {gtype.upper()} | {stype.upper()} | Single run ===", single)
+            print_single(f"\n=== {gtype.upper()} | {stype.upper()} | Single run (same plotted graph) ===", single)
 
-    # 2) Sweep over M (sin ridge)
+    # 2) Sweeps (sin ridge)
+    methods_sweep = ["glasso_skl", "glasso_cvx", "pgd"]
+
     M_list = [10, 20, 50, 100, 200]
     n_seeds = 10
     for gtype in graph_types:
         for stype in signal_types:
             rows_M = sweep_over_M(
-                methods=methods_sweep_M,
+                methods=methods_sweep,
                 M_list=M_list,
                 n_seeds=n_seeds,
                 N=N,
@@ -352,7 +405,7 @@ if __name__ == "__main__":
                 alpha_lap=alpha_lap,
                 eps=eps,
                 lam=lam,
-                gamma_ridge=gamma_ridge,      # da igual aquí, ridge no se usa
+                gamma_ridge=gamma_ridge,
                 cvxpy_solver=cvxpy_solver,
             )
             rows_M = sorted(rows_M, key=lambda d: (d["M"], d["method"]))
@@ -363,13 +416,12 @@ if __name__ == "__main__":
             )
 
 
-    # 3) Sweep over lam (sin ridge)
     lam_list = [0.01, 0.02, 0.05, 0.1, 0.2]
     M_fixed = 100
     for gtype in graph_types:
         for stype in signal_types:
             rows_lam = sweep_over_lam(
-                methods=methods_sweep_lam,
+                methods=methods_sweep,
                 lam_list=lam_list,
                 n_seeds=n_seeds,
                 N=N,
@@ -381,7 +433,7 @@ if __name__ == "__main__":
                 h0=h0, h1=h1, h2=h2,
                 alpha_lap=alpha_lap,
                 eps=eps,
-                gamma_ridge=gamma_ridge,      # da igual aquí, ridge no se usa
+                gamma_ridge=gamma_ridge,
                 cvxpy_solver=cvxpy_solver,
             )
             rows_lam = sorted(rows_lam, key=lambda d: (d["lam"], d["method"]))
