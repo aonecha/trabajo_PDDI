@@ -1,10 +1,13 @@
 # experiments_big.py
+import os
 import warnings
 from sklearn.exceptions import ConvergenceWarning
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 import time
 import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
 
 from data_generation import (
     generate_graph,
@@ -30,14 +33,43 @@ from metrics import (
 )
 
 
+def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, layout_seed: int = 0):
+    os.makedirs(os.path.dirname(outpath), exist_ok=True)
+    G = nx.from_numpy_array(A)  # undirected
+    plt.figure()
+    pos = nx.spring_layout(G, seed=layout_seed)
+    nx.draw(G, pos=pos, node_size=40, with_labels=False)
+    plt.title(title)
+    plt.savefig(outpath, dpi=200, bbox_inches="tight")
+    plt.close()
+
+def save_adjacency_matrix_figure(A: np.ndarray, outpath: str, title: str):
+    """
+    Guarda un heatmap de la matriz de adyacencia ordenando nodos por grado (más legible).
+    """
+    os.makedirs(os.path.dirname(outpath), exist_ok=True)
+
+    deg = A.sum(axis=1)
+    order = np.argsort(-deg)  # grados descendentes
+    A_ord = A[np.ix_(order, order)]
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(A_ord, interpolation="nearest", aspect="equal")
+    plt.title(title)
+    plt.xlabel("nodes (sorted by degree)")
+    plt.ylabel("nodes (sorted by degree)")
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.savefig(outpath, dpi=250, bbox_inches="tight")
+    plt.close()
+
+
 def run_case(
     method: str,
     seed: int,
-    N: int,
+    A_true: np.ndarray,          # <-- usamos el grafo ya creado (mismo para todos)
     M: int,
     avg_degree: int,
     signal_type: str,
-    beta_ws: float = 0.1,
     # gaussian params
     alpha_lap: float = 1.0,
     eps: float = 0.1,
@@ -51,14 +83,7 @@ def run_case(
     cvxpy_solver: str = "SCS",
     thr_theta_to_L: float = 1e-4,
 ):
-    # 1) Graph: ER only
-    A_true = generate_graph(
-        N=N,
-        avg_degree=avg_degree,
-        graph_type="erdos_renyi",
-        seed=seed,
-        beta_ws=beta_ws,   # not used for ER, but harmless
-    )
+    # 1) (A_true ya está dado)
 
     # 2) Generate data X + truth for metric
     if signal_type == "gaussian":
@@ -125,30 +150,47 @@ def print_results(title: str, results: list[dict]):
 
 if __name__ == "__main__":
     # ----------------------------
-    # BIG CASE requested
+    # BIG CASE
     # ----------------------------
     N = 100
     M = 500
-    avg_degree = 6          # recomendado para ER grande (sparse pero no ultra-disperso)
+    avg_degree = 6
     seed = 0
 
-    # inference params
     lam = 0.05
     cvxpy_solver = "SCS"
 
-    # models
     signal_types = ["gaussian", "stationary"]
 
-    # methods:
-    # (si quieres incluir ridge para “ver que es malo”, añade "ridge" aquí)
     methods = ["glasso_skl", "pgd", "glasso_cvx"]
 
+    # 0) Generar el grafo UNA vez (ER) y guardarlo
+    A_true = generate_graph(
+        N=N,
+        avg_degree=avg_degree,
+        graph_type="erdos_renyi",
+        seed=seed,
+        beta_ws=0.1,  # no afecta a ER
+    )
+
+    outpath = f"figures/BIG_ER_N{N}_avgdeg{avg_degree}_seed{seed}.png"
+    title = f"BIG ER (N={N}, avg_degree≈{avg_degree}, seed={seed})"
+    save_graph_figure_from_adjacency(A_true, outpath, title=title, layout_seed=seed)
+    print("Saved graph figure:", outpath)
+
+    out_adj = f"figures/BIG_ER_N{N}_avgdeg{avg_degree}_seed{seed}_adjacency.png"
+    title_adj = f"BIG ER adjacency (sorted by degree) | N={N}, avg_degree≈{avg_degree}, seed={seed}"
+    save_adjacency_matrix_figure(A_true, out_adj, title=title_adj)
+    print("Saved adjacency matrix figure:", out_adj)
+
+
+    # 1) Ejecutar métodos usando EXACTAMENTE ese A_true
     for stype in signal_types:
         results = [
             run_case(
                 method=meth,
                 seed=seed,
-                N=N,
+                A_true=A_true,     # <-- mismo grafo para todos
                 M=M,
                 avg_degree=avg_degree,
                 signal_type=stype,
