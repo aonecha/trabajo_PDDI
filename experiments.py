@@ -6,6 +6,20 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 import time
 import numpy as np
 
+import csv
+import os
+
+def save_rows_to_csv(rows: list[dict], filename: str):
+    if not rows:
+        return
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(r)
+
+
 from data_generation import (
     generate_graph,
     precision_from_adjacency_laplacian,
@@ -343,6 +357,11 @@ if __name__ == "__main__":
             )
             rows_M = sorted(rows_M, key=lambda d: (d["M"], d["method"]))
             print_sweep_M(f"\n=== {gtype.upper()} | {stype.upper()} | Sweep over M ===", rows_M)
+            save_rows_to_csv(
+                rows_M,
+                f"results_csv/sweep_M_{gtype}_{stype}.csv"
+            )
+
 
     # 3) Sweep over lam (sin ridge)
     lam_list = [0.01, 0.02, 0.05, 0.1, 0.2]
@@ -367,3 +386,7 @@ if __name__ == "__main__":
             )
             rows_lam = sorted(rows_lam, key=lambda d: (d["lam"], d["method"]))
             print_sweep_lam(f"\n=== {gtype.upper()} | {stype.upper()} | Sweep over lam ===", rows_lam)
+            save_rows_to_csv(
+                rows_lam,
+                f"results_csv/sweep_lam_{gtype}_{stype}.csv"
+            )       
