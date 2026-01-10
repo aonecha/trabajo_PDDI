@@ -89,25 +89,25 @@ El rendimiento de los métodos se analiza en función de:
 
 ## Estructura del proyecto
 
-trabajo_PDDI/
+  trabajo_PDDI/
 
-├── data_generation.py
+  ├── data_generation.py
 
-├── methods.py
+  ├── methods.py
 
-├── metrics.py
+  ├── metrics.py
 
-├── experiments.py
+  ├── experiments.py
 
-├── experiments_big.py
+  ├── experiments_big.py
 
-├── plot_error_time_vs_M_all_graphs.py
+  ├── plot_error_time_vs_M_all_graphs.py
 
-├── requirements.txt
+  ├── requirements.txt
 
-├── figures/
+  ├── figures/
 
-└── figures_interpretation/
+  └── figures_interpretation/
 
 ---
 
