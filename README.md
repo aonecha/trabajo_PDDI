@@ -38,14 +38,11 @@ Se generan grafos no dirigidos de tamaño aproximado \( N = 20 \) y \( N = 100 \
 Se consideran dos tipos de señales:
 
 1. **Señales Gaussianas i.i.d.**
-   \[
-   x \sim \mathcal{N}(0, S^{-1})
-   \]
+  x ~ N(0, S^{-1})
 
 2. **Señales estacionarias sobre grafos**
-   \[
-   x = H w, \quad w \sim \mathcal{N}(0, I)
-   \]
+   x = H w,   w ~ N(0, I)
+
    donde \( H \) es un filtro paso bajo definido sobre el grafo.
 
 ---
@@ -72,9 +69,8 @@ Para evaluar la calidad de la inferencia se utilizan las siguientes métricas:
 
 - **Tiempo de cómputo** para la estimación del grafo.
 - **Error de estimación del grafo**, definido como:
-  \[
-  \text{Err}(S, \hat{S}) = \frac{\| \hat{S} - S \|_F}{\| S \|_F}
-  \]
+
+  Err(S, Ŝ) = || Ŝ − S ||_F / || S ||_F
 
 ---
 
