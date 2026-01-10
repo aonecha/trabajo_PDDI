@@ -1,5 +1,5 @@
 # Inferencia de Topología a partir de Señales sobre Grafos  
-**Trabajo Final – Procesamiento de Datos Distribuidos e Inferencia (PDDI)**  
+**Trabajo Final – Procesamiento de Datos en Dominios Irregulares (PDDI)**  
 Universidad Rey Juan Carlos
 
 ---
@@ -165,11 +165,11 @@ Script principal de experimentación:
 
 Esta sección describe los pasos necesarios para **reproducir todos los resultados del proyecto** a partir del repositorio.
 
-1.  Instalar las dependencias:
+### 1.  Instalar las dependencias:
 
 pip install -r requirements.txt
 
-2. Ejecución de los experimentos
+### 2. Ejecución de los experimentos
 
 a) Experimentos estándar (grafos pequeños)
 Ejecuta todos los experimentos sobre grafos ER, Small-World y Barabási–Albert, considerando señales gaussianas y estacionarias, así como barridos en el número de muestras y el parámetro de regularización.
@@ -195,7 +195,7 @@ M = 500 muestras
 
 Los resultados se muestran por consola.
 
-3. Generación de las figuras finales
+### 3. Generación de las figuras finales
 Para reproducir todas las gráficas presentadas en el análisis (error, tiempo, esparsidad y frentes de Pareto), ejecutar:
 
 python plot_error_time_vs_M_all_graphs.py
