@@ -71,6 +71,7 @@ Para evaluar la calidad de la inferencia se utilizan las siguientes métricas:
 - **Error de estimación del grafo**, definido como:
 
   Err(S, Ŝ) = || Ŝ − S ||_F / || S ||_F
+  donde ||·||_F denota la norma de Frobenius.
 
 ---
 
@@ -87,7 +88,8 @@ El rendimiento de los métodos se analiza en función de:
 ---
 
 ## Estructura del proyecto
-.
+
+trabajo_PDDI/
 ├── data_generation.py
 ├── methods.py
 ├── metrics.py
@@ -97,7 +99,6 @@ El rendimiento de los métodos se analiza en función de:
 ├── requirements.txt
 ├── figures/
 └── figures_interpretation/
-
 ---
 
 ## Descripción de los archivos
