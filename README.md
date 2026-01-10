@@ -1,13 +1,96 @@
-# Proyecto_PDDI
-
-Este proyecto implementa un conjunto de **experimentos de aprendizaje de estructura en grafos** a partir de señales observadas, comparando distintos métodos de estimación de la **matriz de precisión (Θ)** y del **Laplaciano del grafo**.
-
-Se estudia el compromiso entre **precisión**, **esparsidad** y **coste computacional** bajo diferentes tipos de grafos, modelos de señal y parámetros experimentales.
+# Inferencia de Topología a partir de Señales sobre Grafos  
+**Trabajo Final – Procesamiento de Datos Distribuidos e Inferencia (PDDI)**  
+Universidad Rey Juan Carlos
 
 ---
 
-## 📁 Estructura del proyecto
+## Descripción del proyecto
 
+Este proyecto aborda el problema de la **inferencia de la topología de un grafo a partir de señales observadas en sus nodos**, en el marco del **Graph Signal Processing (GSP)** y los **modelos gráficos gaussianos**.
+
+Concretamente, se estudia la inferencia de la estructura del grafo \( S \) utilizando **Graphical Lasso** y métodos de inferencia basados en la hipótesis de **señales estacionarias sobre grafos**. El análisis se realiza mediante datos sintéticos generados sobre distintos modelos de grafos.
+
+---
+
+## Objetivo
+
+El objetivo principal es:
+
+- **Inferir la estructura del grafo \( S \)** a partir de señales observadas en los nodos.
+- Evaluar el rendimiento de distintos métodos de inferencia de topología.
+- Analizar la sensibilidad de los métodos frente a distintos parámetros del problema.
+
+---
+
+## Generación de datos
+
+### 🔹 Grafos sintéticos
+Se generan grafos no dirigidos de tamaño aproximado \( N = 20 \) y \( N = 100 \) nodos, con un grado medio cercano a 4–6 enlaces por nodo, utilizando distintos modelos:
+
+- Erdős–Rényi (ER)
+- Small-World (SW)
+- Barabási–Albert (BA)
+
+---
+
+### 🔹 Modelos de señales
+
+Se consideran dos tipos de señales:
+
+1. **Señales Gaussianas i.i.d.**
+   \[
+   x \sim \mathcal{N}(0, S^{-1})
+   \]
+
+2. **Señales estacionarias sobre grafos**
+   \[
+   x = H w, \quad w \sim \mathcal{N}(0, I)
+   \]
+   donde \( H \) es un filtro paso bajo definido sobre el grafo.
+
+---
+
+## Algoritmos e implementación
+
+El proyecto pone énfasis en la **implementación de los algoritmos**, más que en su simple evaluación.
+
+Se estudian y comparan distintas estrategias para la inferencia de grafos:
+
+- **Graphical Lasso**
+- Implementación mediante **CVXPY**
+- Algoritmos iterativos clásicos:
+  - Descenso por gradiente proyectado
+  - Descenso coordinado para Graphical Lasso
+
+El objetivo es comparar el impacto de distintas implementaciones sobre el rendimiento y el coste computacional.
+
+---
+
+## Métricas y análisis de sensibilidad
+
+Para evaluar la calidad de la inferencia se utilizan las siguientes métricas:
+
+- **Tiempo de cómputo** para la estimación del grafo.
+- **Error de estimación del grafo**, definido como:
+  \[
+  \text{Err}(S, \hat{S}) = \frac{\| \hat{S} - S \|_F}{\| S \|_F}
+  \]
+
+---
+
+### Análisis de sensibilidad
+
+El rendimiento de los métodos se analiza en función de:
+
+- Número de muestras disponibles.
+- Número de nodos del grafo.
+- Nivel de esparsidad del grafo.
+- Tipo de grafo subyacente.
+- Posible extensión a casos más realistas.
+
+---
+
+## Estructura del proyecto
 .
 ├── data_generation.py
 ├── methods.py
@@ -19,12 +102,9 @@ Se estudia el compromiso entre **precisión**, **esparsidad** y **coste computac
 ├── figures/
 └── figures_interpretation/
 
-yaml
-Copiar código
-
 ---
 
-## 📌 Descripción de los archivos
+## Descripción de los archivos
 
 ### `data_generation.py`
 Contiene funciones para:
@@ -74,8 +154,7 @@ Script principal de experimentación:
 - Soporte para señales gaussianas y estacionarias
 
 
-### `Ejecución`
-## 🔁 Reproducibilidad de los resultados
+## Reproducibilidad de los resultados
 
 Esta sección describe los pasos necesarios para **reproducir todos los resultados del proyecto** a partir del repositorio.
 
@@ -87,7 +166,6 @@ Esta sección describe los pasos necesarios para **reproducir todos los resultad
 
 Instalar las dependencias:
 
-bash
 pip install -r requirements.txt
 
 2️⃣ Ejecución de los experimentos
