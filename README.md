@@ -171,20 +171,22 @@ pip install -r requirements.txt
 
 ### 2. Ejecución de los experimentos
 
-a) Experimentos estándar (grafos pequeños)
+**a)** Experimentos estándar (grafos pequeños)
 Ejecuta todos los experimentos sobre grafos ER, Small-World y Barabási–Albert, considerando señales gaussianas y estacionarias, así como barridos en el número de muestras y el parámetro de regularización.
 
 python experiments.py
+
 Resultados obtenidos:
 
 Métricas de error, esparsidad y tiempo por consola
 
 Figuras de los grafos generados en figures/
 
-b) Experimento a gran escala
+**b)** Experimento a gran escala
 Ejecuta un experimento más exigente para evaluar el rendimiento computacional de los métodos sobre un grafo grande.
 
 python experiments_big.py
+
 Configuración utilizada:
 
 Grafo Erdős–Rényi
@@ -199,5 +201,4 @@ Los resultados se muestran por consola.
 Para reproducir todas las gráficas presentadas en el análisis (error, tiempo, esparsidad y frentes de Pareto), ejecutar:
 
 python plot_error_time_vs_M_all_graphs.py
-
 Figuras de los grafos generados en figures_interpretation/
