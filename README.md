@@ -1,6 +1,14 @@
 # Inferencia de Topología a partir de Señales sobre Grafos  
 **Trabajo Final – Procesamiento de Datos en Dominios Irregulares (PDDI)**  
-Universidad Rey Juan Carlos
+
+- Adrián Onecha
+- Hugo León
+- Jaime Cáceres
+
+Grado en Ciencia e Ingeniería de Datos  
+Universidad Rey Juan Carlos  
+Asignatura: Procesamiento de Datos Distribuidos e Inferencia (PDDI)  
+Curso académico: 2025–2026
 
 ---
 
