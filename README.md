@@ -165,23 +165,15 @@ Script principal de experimentación:
 
 Esta sección describe los pasos necesarios para **reproducir todos los resultados del proyecto** a partir del repositorio.
 
-1️⃣ Requisitos
-
-- Python ≥ 3.10
-- Sistema operativo: Linux / macOS / Windows
-- Se recomienda el uso de un entorno virtual
-
-Instalar las dependencias:
+1.  Instalar las dependencias:
 
 pip install -r requirements.txt
 
-2️⃣ Ejecución de los experimentos
+2. Ejecución de los experimentos
 
 a) Experimentos estándar (grafos pequeños)
 Ejecuta todos los experimentos sobre grafos ER, Small-World y Barabási–Albert, considerando señales gaussianas y estacionarias, así como barridos en el número de muestras y el parámetro de regularización.
 
-bash
-Copiar código
 python experiments.py
 Resultados obtenidos:
 
@@ -192,8 +184,6 @@ Figuras de los grafos generados en figures/
 b) Experimento a gran escala
 Ejecuta un experimento más exigente para evaluar el rendimiento computacional de los métodos sobre un grafo grande.
 
-bash
-Copiar código
 python experiments_big.py
 Configuración utilizada:
 
@@ -205,13 +195,9 @@ M = 500 muestras
 
 Los resultados se muestran por consola.
 
-3️⃣ Generación de las figuras finales
+3. Generación de las figuras finales
 Para reproducir todas las gráficas presentadas en el análisis (error, tiempo, esparsidad y frentes de Pareto), ejecutar:
 
-bash
-Copiar código
 python plot_error_time_vs_M_all_graphs.py
-Las figuras se generan automáticamente en el directorio:
 
-Copiar código
-figures_interpretation/
+Figuras de los grafos generados en figures_interpretation/
