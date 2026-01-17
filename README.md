@@ -109,7 +109,7 @@ El rendimiento de los métodos se analiza en función de:
 
   ├── experiments_big.py
 
-  ├── plot_error_time_vs_M_all_graphs.py
+  ├── plot_figures.py
 
   ├── requirements.txt
 
@@ -208,5 +208,5 @@ Los resultados se muestran por consola.
 ### 3. Generación de las figuras finales
 Para reproducir todas las gráficas presentadas en el análisis (error, tiempo, esparsidad y frentes de Pareto), ejecutar:
 
-python plot_error_time_vs_M_all_graphs.py
+python plot_figures.py
 Figuras de los grafos generados en figures_interpretation/

@@ -83,23 +83,44 @@ def plot_mean_std(ax, x, mean, std, label, color):
     )
 
 # ======================================================
+# FUNCIÓN AUXILIAR: CIERRE DE FIGURA 2-PANELES (SUptitle + Legend SIN SOLAPAR)
+# ======================================================
+def finalize_two_panel_figure(fig, axes, title, outpath):
+    # Título arriba (y reservado)
+    fig.suptitle(title, fontsize=14, y=0.98)
+
+    # Leyenda basada en las líneas del primer subplot
+    handles, labels = axes[0].get_legend_handles_labels()
+
+    # Leyenda centrada arriba pero debajo del título
+    fig.legend(
+        handles, labels,
+        loc="upper center",
+        ncol=len(METHODS),
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.94)
+    )
+
+    # Reservar espacio superior para título + leyenda
+    fig.tight_layout(rect=[0, 0, 1, 0.88])
+
+    fig.savefig(outpath, dpi=300)
+    plt.close(fig)
+
+# ======================================================
 # ERROR Y TIEMPO VS M
 # ======================================================
 def plot_error_time_vs_M(df, graph, signal):
     d = df[
-    (df.graph_type == graph) &
-    (df.signal_type == signal) &
-    (df.M > 10)   # ⬅️ elimina M = 10 SOLO en la gráfica
-]
+        (df.graph_type == graph) &
+        (df.signal_type == signal) &
+        (df.M > 10)   # ⬅️ elimina M = 10 SOLO en la gráfica
+    ]
 
     if d.empty:
         return
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
-    fig.suptitle(
-        f"{graph.replace('_',' ').title()} — Señal {signal}",
-        fontsize=14
-    )
 
     # Error vs M
     ax = axes[0]
@@ -122,10 +143,11 @@ def plot_error_time_vs_M(df, graph, signal):
     ax.set_ylabel("Tiempo de cómputo (ms, log)")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
-    fig.legend(METHODS, loc="upper center", ncol=3, frameon=False)
-    plt.tight_layout()
-    plt.savefig(f"{FIG_DIR}/{graph}_{signal}_error_time_vs_M.png", dpi=300)
-    plt.close()
+    signal_pretty = {"gaussian": "Gaussiana", "stationary": "Estacionaria"}.get(signal, signal)
+    title = f"{graph.replace('_',' ').title()} — Señal {signal_pretty}"
+    outpath = f"{FIG_DIR}/{graph}_{signal}_error_time_vs_M.png"
+
+    finalize_two_panel_figure(fig, axes, title, outpath)
 
 # ======================================================
 # ERROR Y SPARSITY VS LAMBDA
@@ -136,10 +158,6 @@ def plot_error_sparsity_vs_lam(df, graph, signal):
         return
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 4.5))
-    fig.suptitle(
-        f"{graph.replace('_',' ').title()} — Señal {signal}",
-        fontsize=14
-    )
 
     # Error vs lambda
     ax = axes[0]
@@ -161,10 +179,11 @@ def plot_error_sparsity_vs_lam(df, graph, signal):
     ax.set_ylabel("Esparsidad fuera de la diagonal")
     ax.grid(axis="y", linestyle="--", alpha=0.4)
 
-    fig.legend(METHODS, loc="upper center", ncol=3, frameon=False)
-    plt.tight_layout()
-    plt.savefig(f"{FIG_DIR}/{graph}_{signal}_error_sparsity_vs_lam.png", dpi=300)
-    plt.close()
+    signal_pretty = {"gaussian": "Gaussiana", "stationary": "Estacionaria"}.get(signal, signal)
+    title = f"{graph.replace('_',' ').title()} — Señal {signal_pretty}"
+    outpath = f"{FIG_DIR}/{graph}_{signal}_error_sparsity_vs_lam.png"
+
+    finalize_two_panel_figure(fig, axes, title, outpath)
 
 # ======================================================
 # PARETO PRECISIÓN–TIEMPO
@@ -191,9 +210,12 @@ def plot_pareto(df, graph, signal):
     plt.yscale("log")
     plt.xlabel("Tiempo de cómputo (ms, log)")
     plt.ylabel("Error relativo (log)")
+
+    signal_pretty = {"gaussian": "Gaussiana", "stationary": "Estacionaria"}.get(signal, signal)
     plt.title(
-        f"Compromiso precisión–tiempo\n{graph.replace('_',' ').title()} — {signal}"
+        f"Compromiso precisión–tiempo\n{graph.replace('_',' ').title()} — {signal_pretty}"
     )
+
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.legend(frameon=False)
     plt.tight_layout()
