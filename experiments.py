@@ -33,10 +33,12 @@ from metrics import (
 )
 
 
-# -----------------------------
-# Plot: guardar grafo 1 vez
-# -----------------------------
+
 def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, layout_seed: int = 0):
+    """
+    Dibuja y guarda un grafo a partir de su matriz de adyacencia.
+    Usa un spring layout reproducible y exporta la figura a un archivo PNG.
+    """
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
     G = nx.from_numpy_array(A)  # undirected
     plt.figure()
@@ -50,7 +52,7 @@ def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, la
 def plot_three_graphs_once(N: int, avg_degree: int, beta_ws: float, seed_graph: int = 0):
     """
     Genera ER / WS / BA UNA sola vez y guarda 3 figuras.
-    Devuelve dict con A_true para reutilizar en single run.
+    Devuelve un diccionario con las matrices de adyacencia para reutilizarlas.
     """
     graph_types = ["erdos_renyi", "watts_strogatz", "barabasi_albert"]
     pretty = {
@@ -95,7 +97,7 @@ def run_single(
     avg_degree: int = 4,
     graph_type: str = "erdos_renyi",
     beta_ws: float = 0.1,
-    signal_type: str = "gaussian",   # "gaussian" or "stationary"
+    signal_type: str = "gaussian",   
     h0: float = 1.0,
     h1: float = -0.25,
     h2: float = 0.0,
@@ -104,9 +106,12 @@ def run_single(
     lam: float = 0.05,
     gamma_ridge: float = 1e-2,
     cvxpy_solver: str = "SCS",
-    # NEW: override graph adjacency for single run reuse
     A_true_override: np.ndarray | None = None,
 ):
+    """
+    Ejecuta una única corrida del experimento para un método concreto.
+    Genera datos, estima la matriz de precisión y devuelve error, sparsity y tiempo.
+    """
     # 1) Graph
     if A_true_override is not None:
         A_true = A_true_override
@@ -173,6 +178,10 @@ def run_single(
 
 
 def print_single(title: str, results):
+    """
+    Imprime por pantalla los resultados de varias corridas individuales.
+    Muestra error, sparsity y tiempo de cada método de forma legible.
+    """
     print(title)
     for r in results:
         print(
@@ -199,6 +208,10 @@ def sweep_over_M(
     gamma_ridge=1e-2,
     cvxpy_solver="SCS",
 ):
+    """
+    Realiza un barrido sobre distintos valores del número de muestras M.
+    Promedia resultados sobre varias semillas para cada método.
+    """
     rows = []
     for M in M_list:
         for method in methods:
@@ -255,6 +268,10 @@ def sweep_over_lam(
     gamma_ridge=1e-2,
     cvxpy_solver="SCS",
 ):
+    """
+    Realiza un barrido sobre distintos valores del parámetro de regularización λ.
+    Evalúa el compromiso entre error, sparsity y tiempo de cómputo.
+    """   
     rows = []
     for lam in lam_list:
         for method in methods:
@@ -296,6 +313,10 @@ def sweep_over_lam(
 
 
 def print_sweep_M(title: str, rows):
+    """
+    Imprime los resultados del barrido sobre M agrupados por tamaño de muestra.
+    Muestra medias y desviaciones típicas para cada método.
+    """
     print(title)
     current_M = None
     for r in rows:
@@ -311,6 +332,10 @@ def print_sweep_M(title: str, rows):
 
 
 def print_sweep_lam(title: str, rows):
+    """
+    Imprime los resultados del barrido sobre λ agrupados por valor de regularización.
+    Resume error, sparsity y tiempo para cada método.
+    """
     print(title)
     current_lam = None
     for r in rows:
@@ -326,6 +351,13 @@ def print_sweep_lam(title: str, rows):
 
 
 if __name__ == "__main__":
+    """
+    1) Define parámetros globales.
+    2) Genera y guarda figuras de grafos (ER/SW/BA) una sola vez y cachea sus adyacencias.
+    3) Ejecuta corridas individuales comparando métodos sobre el MISMO grafo (comparación justa).
+    4) Ejecuta barridos sobre M (nº de muestras) promediando sobre varias semillas.
+    5) Ejecuta barridos sobre λ (regularización) con M fijo para estudiar el trade-off error/sparsity.
+    """
     N = 20
     avg_degree = 4
     graph_types = ["erdos_renyi", "watts_strogatz", "barabasi_albert"]
@@ -342,10 +374,9 @@ if __name__ == "__main__":
     gamma_ridge = 1e-2
     cvxpy_solver = "SCS"
 
-    # 0) Plot graphs once + cache adjacency to reuse in single run
+
     A_cache = plot_three_graphs_once(N=N, avg_degree=avg_degree, beta_ws=beta_ws, seed_graph=0)
 
-    # 1) Single runs (same A for all methods within each gtype)
     methods_single = ["ridge", "glasso_skl", "glasso_cvx", "pgd"]
     for gtype in graph_types:
         for stype in signal_types:
@@ -365,13 +396,12 @@ if __name__ == "__main__":
                     lam=lam,
                     gamma_ridge=gamma_ridge,
                     cvxpy_solver=cvxpy_solver,
-                    A_true_override=A_cache[gtype],  # ✅ same graph as plotted
+                    A_true_override=A_cache[gtype],  
                 )
                 for m in methods_single
             ]
             print_single(f"\n=== {gtype.upper()} | {stype.upper()} | Single run (same plotted graph) ===", single)
 
-    # 2) Sweeps (sin ridge)
     methods_sweep = ["glasso_skl", "glasso_cvx", "pgd"]
 
     M_list = [10, 20, 50, 100, 200]

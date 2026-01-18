@@ -34,6 +34,10 @@ from metrics import (
 
 
 def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, layout_seed: int = 0):
+    """
+    Dibuja y guarda un grafo a partir de su matriz de adyacencia.
+    Usa un spring layout reproducible y exporta la figura a un archivo PNG.
+    """  
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
     G = nx.from_numpy_array(A)  # undirected
     plt.figure()
@@ -45,7 +49,8 @@ def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, la
 
 def save_adjacency_matrix_figure(A: np.ndarray, outpath: str, title: str):
     """
-    Guarda un heatmap de la matriz de adyacencia ordenando nodos por grado (más legible).
+    Guarda un "heatmap" de la matriz de adyacencia para inspección visual.
+    Reordena los nodos por grado (descendente) para que la estructura se vea más clara.
     """
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
@@ -66,26 +71,30 @@ def save_adjacency_matrix_figure(A: np.ndarray, outpath: str, title: str):
 def run_case(
     method: str,
     seed: int,
-    A_true: np.ndarray,          # <-- usamos el grafo ya creado (mismo para todos)
+    A_true: np.ndarray,         
     M: int,
     avg_degree: int,
     signal_type: str,
-    # gaussian params
     alpha_lap: float = 1.0,
     eps: float = 0.1,
-    # stationary filter params
     h0: float = 1.0,
     h1: float = -0.25,
     h2: float = 0.0,
-    # inference params
     lam: float = 0.05,
     gamma_ridge: float = 1e-2,
     cvxpy_solver: str = "SCS",
     thr_theta_to_L: float = 1e-4,
 ):
-    # 1) (A_true ya está dado)
-
-    # 2) Generate data X + truth for metric
+    """
+    Ejecuta una corrida (un seed) para un método usando un grafo YA fijado (A_true).
+    1) Genera datos X según el tipo de señal (gaussian o stationary).
+    2) Calcula la covarianza muestral S (fuera del timing).
+    3) Estima Θ_hat con el método elegido midiendo SOLO el tiempo del solver.
+    4) Calcula el error respecto a la verdad-terreno:
+       - gaussian: compara Θ_hat con Θ_true (Frobenius relativo off-diagonal)
+       - stationary: convierte Θ_hat -> L_hat y compara con L_true (Frobenius relativo full)
+    Devuelve métricas: error, sparsity de Θ_hat y tiempo del solver en ms.
+    """
     if signal_type == "gaussian":
         Theta_true = precision_from_adjacency_laplacian(A_true, alpha_lap=alpha_lap, eps=eps)
         X = sample_gaussian_from_precision(Theta_true, M=M, seed=seed + 123)
@@ -138,6 +147,10 @@ def run_case(
 
 
 def print_results(title: str, results: list[dict]):
+    """
+    Imprime un resumen legible de resultados (lista de diccionarios devueltos por run_case).
+    Muestra por método: error, sparsity de Θ_hat y tiempo de solver en milisegundos.
+    """
     print(title)
     for r in results:
         print(
@@ -149,9 +162,13 @@ def print_results(title: str, results: list[dict]):
 
 
 if __name__ == "__main__":
-    # ----------------------------
-    # BIG CASE
-    # ----------------------------
+    """
+    Ejecución “BIG CASE” para probar escalabilidad en un grafo más grande.
+    1) Fija N, M, avg_degree, seed y parámetros del solver.
+    2) Genera un único grafo ER (A_true) y guarda su dibujo + heatmap de adyacencia ordenada por grado.
+    3) Para cada tipo de señal (gaussian y stationary), ejecuta varios métodos sobre EXACTAMENTE el mismo A_true
+       y muestra métricas comparables (error/sparsity/tiempo).
+    """
     N = 100
     M = 500
     avg_degree = 6
@@ -183,14 +200,12 @@ if __name__ == "__main__":
     save_adjacency_matrix_figure(A_true, out_adj, title=title_adj)
     print("Saved adjacency matrix figure:", out_adj)
 
-
-    # 1) Ejecutar métodos usando EXACTAMENTE ese A_true
     for stype in signal_types:
         results = [
             run_case(
                 method=meth,
                 seed=seed,
-                A_true=A_true,     # <-- mismo grafo para todos
+                A_true=A_true,     
                 M=M,
                 avg_degree=avg_degree,
                 signal_type=stype,
