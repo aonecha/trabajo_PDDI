@@ -32,23 +32,6 @@ from metrics import (
     theta_to_laplacian,
 )
 
-
-
-def save_graph_figure_from_adjacency(A: np.ndarray, outpath: str, title: str, layout_seed: int = 0):
-    """
-    Dibuja y guarda un grafo a partir de su matriz de adyacencia.
-    Usa un spring layout reproducible y exporta la figura a un archivo PNG.
-    """
-    os.makedirs(os.path.dirname(outpath), exist_ok=True)
-    G = nx.from_numpy_array(A)  # undirected
-    plt.figure()
-    pos = nx.spring_layout(G, seed=layout_seed)
-    nx.draw(G, pos=pos, node_size=80, with_labels=False)
-    plt.title(title)
-    plt.savefig(outpath, dpi=200, bbox_inches="tight")
-    plt.close()
-
-
 def plot_three_graphs_once(N: int, avg_degree: int, beta_ws: float, seed_graph: int = 0):
     """
     Genera ER / WS / BA UNA sola vez y guarda 3 figuras.
@@ -80,15 +63,11 @@ def plot_three_graphs_once(N: int, avg_degree: int, beta_ws: float, seed_graph: 
             title = f"BA (N={N}, avg_degree≈{avg_degree}, seed={seed_graph})"
 
         outpath = f"figures/graph_{pretty[gtype]}_N{N}_seed{seed_graph}.png"
-        save_graph_figure_from_adjacency(A, outpath, title=title, layout_seed=seed_graph)
         print("Saved graph figure:", outpath)
 
     return cache
 
 
-# -----------------------------
-# Core experiment
-# -----------------------------
 def run_single(
     method: str,
     seed: int = 0,

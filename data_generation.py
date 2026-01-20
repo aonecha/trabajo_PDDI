@@ -101,7 +101,7 @@ def low_order_graph_filter(
 ) -> np.ndarray:
     """
     Construye un filtro de grafo de orden bajo como polinomio del Laplaciano.
-    H = h0 I + h1 L (+ h2 L^2 si se especifica).
+    H = h0 I + h1 L + h2 L^2 
     """
     N = L.shape[0]
     I = np.eye(N)
@@ -121,7 +121,7 @@ def sample_stationary_signals(
 ) -> np.ndarray:
     """
     Genera señales estacionarias sobre un grafo filtrando ruido blanco.
-    Las señales se obtienen como X = H W, donde H es un filtro de grafo.
+    Las señales se obtienen como X = HW, donde H es un filtro de grafo.
     """
     rng = np.random.default_rng(seed)
     L = laplacian_from_adjacency(A)
@@ -140,7 +140,8 @@ def precision_from_stationary_filter(
 ) -> np.ndarray:
     """
     Calcula la matriz de precisión teórica del proceso estacionario inducido por el filtro.
-    Se añade regularización para garantizar definición positiva.
+    Se añade regularización para garantizar definición positiva. Se calcula la matriz de precisión
+    para combrobar los resultados de los métodos de estimación.
     """
     L = laplacian_from_adjacency(A)
     H = low_order_graph_filter(L, h0=h0, h1=h1, h2=h2)

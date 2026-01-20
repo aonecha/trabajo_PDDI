@@ -6,12 +6,7 @@ from sklearn.covariance import GraphicalLasso
 def sample_cov_centered(X: np.ndarray) -> np.ndarray:
     """
     Calcula la covarianza muestral centrada por nodo.
-
-    Entrada:
-      - X con forma (N, M): N nodos/variables, M muestras.
-    Proceso:
-      - Centra cada fila (nodo) restando su media.
-      - Devuelve S = (1/M) * Xc * Xc^T.
+    Devuelve S = (1/M) * Xc * Xc^T.
     """
     N, M = X.shape
     Xc = X - X.mean(axis=1, keepdims=True)
@@ -21,12 +16,8 @@ def sample_cov_centered(X: np.ndarray) -> np.ndarray:
 # --------- 1) RIDGE (solver = inv) ----------
 def estimate_theta_ridge_from_cov(S: np.ndarray, gamma: float = 1e-2) -> np.ndarray:
     """
-    Estima una matriz de precisión mediante un estimador tipo ridge a partir de la covarianza S.
-
-    Idea:
-      - Regulariza la covarianza: (S + gamma I) para que sea invertible/estable.
-      - Estima Theta = (S + gamma I)^{-1}.
-      - Fuerza simetría y anula la diagonal (coherente con evaluar solo off-diagonal).
+    Calculamos theta a traves de la formula de ridge que nos indica
+    que la matriz de precision es la inversa de la covarianza
     """
     N = S.shape[0]
     Theta = np.linalg.inv(S + gamma * np.eye(N))
@@ -41,7 +32,6 @@ def estimate_theta_glasso_sklearn_solver_time(
 ) -> np.ndarray:
     """
     Estima la matriz de precisión con Graphical Lasso usando la implementación de scikit-learn.
-
     Entradas:
       - X con forma (N, M). scikit-learn espera (M, N), por eso se usa X.T.
       - lam: regularización L1 (alpha en sklearn) que promueve esparsidad en la precisión.
@@ -49,11 +39,10 @@ def estimate_theta_glasso_sklearn_solver_time(
 
     Salida:
       - Theta estimada (precision_) simetrizada y con diagonal puesta a cero.
-    Nota:
-      - En tus experimentos, el tiempo de solver se mide alrededor de esta llamada.
+  
     """
     model = GraphicalLasso(alpha=lam, max_iter=max_iter, tol=tol)
-    model.fit(X.T)  # solver
+    model.fit(X.T) 
     Theta = model.precision_.copy()
     Theta = 0.5 * (Theta + Theta.T)
     np.fill_diagonal(Theta, 0.0)
@@ -65,17 +54,16 @@ _CVXPY_CACHE = {}
 
 def _get_cvxpy_problem(N: int, solver: str = "SCS"):
     """
-    Crea (o reutiliza desde caché) el problema de Graphical Lasso en CVXPY para tamaño N.
+    Modelo (típico Glasso):
+      min_Theta  -logdet(Theta) + trace(S Theta) + lam * ||Theta_offdiag||_1
+      s.a.       Theta es SPD (se impone Theta >> 1e-6 I)
 
-    Motivación:
-      - Construir el problema CVXPY (variables, parámetros, objetivo y restricciones) es costoso.
-      - Como en los sweeps se resuelve muchas veces para el mismo N, se cachea y solo se cambian:
-          * S_param (covarianza)
-          * lam_param (regularización)
-
+    Definimos el objetivo y las restricciones del problema de Graphical Lasso en CVXPY.
+    Guardamos el problema en la caché para reutilizarlo en futuras llamadas.
+    
     Devuelve un diccionario con:
       - prob: el problema CVXPY listo para resolver
-      - Theta: variable de decisión
+      - Theta: variable de decisión optima
       - S, lam: parámetros que se actualizan antes de cada solve
       - solver: nombre del solver asociado al caché
     """
@@ -98,19 +86,10 @@ def _get_cvxpy_problem(N: int, solver: str = "SCS"):
 
 def estimate_theta_glasso_cvxpy_from_cov(S: np.ndarray, lam: float = 0.05, solver: str = "SCS") -> np.ndarray:
     """
+    Recuperamos el problema cacheado, introducimos los datos y resolvemos.
+    Con esto obtenemos la estimación de la matriz de precisión.
+    
     Estima la matriz de precisión con Graphical Lasso formulado en CVXPY, usando la covarianza S.
-
-    Modelo (típico Glasso):
-      min_Theta  -logdet(Theta) + trace(S Theta) + lam * ||Theta_offdiag||_1
-      s.a.       Theta es SPD (se impone Theta >> 1e-6 I)
-
-    Implementación:
-      - Reutiliza un problema cacheado para el tamaño N.
-      - Actualiza los parámetros S y lam y resuelve con el solver indicado.
-      - Comprueba convergencia (Theta.value no None), simetriza y anula diagonal.
-
-    Devuelve:
-      - Theta_hat (N x N) estimada.
     """
     N = S.shape[0]
     pack = _get_cvxpy_problem(N, solver=solver)
@@ -137,21 +116,14 @@ def estimate_theta_pgd_from_cov(
     jitter: float = 1e-3,
 ) -> np.ndarray:
     """
-    Estima Theta mediante un esquema tipo Proximal Gradient Descent (PGD) sobre el objetivo Glasso.
+    Estima Theta mediante un esquema tipo Proximal Gradient Descent (PGD)
 
-    Esquema (aproximado):
+    Esquema:
       - Paso de gradiente sobre: -logdet(Theta) + trace(S Theta)
         grad = S - Theta^{-1}
       - Paso proximal soft-thresholding en las entradas off-diagonal para la norma L1 (esparsidad)
       - Se fuerza simetría y se añade jitter a la diagonal para mantener SPD numéricamente
-
-    Entradas:
-      - S: covarianza muestral (ya precomputada fuera del timing del solver).
-      - lam: fuerza de esparsidad (umbral del shrinkage).
-      - lr: learning rate del paso de gradiente.
-      - n_iter: número de iteraciones del bucle.
-      - jitter: pequeña suma en diagonal para estabilidad/invertibilidad.
-
+    
     Salida:
       - Theta estimada, con diagonal puesta a cero (coherente con las métricas off-diagonal).
     """
